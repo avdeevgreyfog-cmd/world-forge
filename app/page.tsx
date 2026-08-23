@@ -1,59 +1,22 @@
 "use client";
 
 import {useCallback,useEffect,useMemo,useRef,useState} from "react";
+import {H,W,generate,hash2,reliefColor,type HeightField,type HeightSettings as Settings} from "../lib/heightfield/core";
 
-const W=512,H=320,ASPECT=W/H;
 type Mode="height"|"mask";
-type Settings={frequency:number;octaves:number;persistence:number;redistribution:number;sea:number};
-type HeightField={values:Float32Array;histogram:number[];min:number;max:number;mean:number;land:number};
-
-function hash2(x:number,y:number,seed:number){let h=Math.imul(x^seed,374761393)+Math.imul(y,668265263);h=Math.imul(h^(h>>>13),1274126177);return((h^(h>>>16))>>>0)/4294967295}
-const fade=(t:number)=>t*t*t*(t*(t*6-15)+10),mix=(a:number,b:number,t:number)=>a+(b-a)*t,clamp=(v:number)=>Math.max(0,Math.min(1,v));
-const wrap=(v:number,n:number)=>((v%n)+n)%n;
-
-type RGB=[number,number,number];
-const OCEAN_COLORS:RGB[]=[[44,46,73],[66,75,130],[79,106,184],[100,143,190],[131,181,206],[162,221,225]];
-const LAND_COLORS:RGB[]=[[58,142,98],[67,152,75],[102,162,78],[134,170,84],[162,177,89],[185,176,94],[192,163,104],[211,175,145],[232,203,194],[249,245,244]];
-function bandColor(colors:RGB[],t:number):RGB{return colors[Math.min(colors.length-1,Math.floor(clamp(t)*colors.length))]}
-function reliefColor(h:number,sea:number,min:number,max:number):RGB{return h<sea?bandColor(OCEAN_COLORS,(h-min)/Math.max(.001,sea-min)):bandColor(LAND_COLORS,(h-sea)/Math.max(.001,max-sea))}
-
-function gradientNoise(x:number,y:number,seed:number,periodX:number){
-  const xi=Math.floor(x),yi=Math.floor(y),tx=x-xi,ty=y-yi;
-  const dot=(gx:number,gy:number,dx:number,dy:number)=>{const angle=hash2(wrap(gx,periodX),gy,seed)*Math.PI*2;return Math.cos(angle)*dx+Math.sin(angle)*dy};
-  const u=fade(tx),v=fade(ty);
-  return mix(mix(dot(xi,yi,tx,ty),dot(xi+1,yi,tx-1,ty),u),mix(dot(xi,yi+1,tx,ty-1),dot(xi+1,yi+1,tx-1,ty-1),u),v)*1.42;
-}
-
-function fractalNoise(nx:number,ny:number,seed:number,s:Settings){
-  let value=0,amplitude=1,total=0,frequency=s.frequency;
-  for(let octave=0;octave<s.octaves;octave++){
-    value+=gradientNoise(nx*frequency,ny*frequency/ASPECT,seed+octave*1013,Math.max(1,Math.round(frequency)))*amplitude;
-    total+=amplitude;amplitude*=s.persistence;frequency*=2;
-  }
-  return value/total;
-}
-
-function generate(seed:number,s:Settings):HeightField{
-  const values=new Float32Array(W*H),histogram=Array(24).fill(0);let min=1,max=0,sum=0,land=0;
-  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
-    const nx=x/(W-1),ny=y/(H-1),raw=.5+fractalNoise(nx,ny,seed,s)*.5,elevation=clamp(Math.pow(clamp(raw),s.redistribution)),i=y*W+x;
-    values[i]=elevation;min=Math.min(min,elevation);max=Math.max(max,elevation);sum+=elevation;if(elevation>=s.sea)land++;histogram[Math.min(23,Math.floor(elevation*24))]++;
-  }
-  const peak=Math.max(...histogram);return{values,histogram:histogram.map(v=>v/peak),min,max,mean:sum/values.length,land:Math.round(land/values.length*100)};
-}
 
 export default function Home(){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const [seed,setSeed]=useState(481726),[seedInput,setSeedInput]=useState("481726"),[mode,setMode]=useState<Mode>("height"),[vectors,setVectors]=useState(false),[busy,setBusy]=useState(false),[probe,setProbe]=useState<{x:number;y:number;h:number}|null>(null);
   const [settings,setSettings]=useState<Settings>({frequency:4,octaves:6,persistence:.52,redistribution:1.05,sea:.5});
-  const field=useMemo(()=>generate(seed,settings),[seed,settings]);
+  const field:HeightField=useMemo(()=>generate(seed,settings),[seed,settings]);
   useEffect(()=>{setBusy(true);const t=window.setTimeout(()=>setBusy(false),80);return()=>window.clearTimeout(t)},[field]);
 
   const draw=useCallback(()=>{
     const canvas=canvasRef.current;if(!canvas)return;canvas.width=W*2;canvas.height=H*2;const ctx=canvas.getContext("2d");if(!ctx)return;
     const off=document.createElement("canvas");off.width=W;off.height=H;const ox=off.getContext("2d")!,img=ox.createImageData(W,H);
     for(let i=0;i<field.values.length;i++){
-      const h=field.values[i],x=i%W,y=Math.floor(i/W);let r:number,g:number,b:number;
+      const h=field.values[i];let r:number,g:number,b:number;
       if(mode==="height"){[r,g,b]=reliefColor(h,settings.sea,field.min,field.max)}else if(h>=settings.sea){r=222;g=213;b=190}else{r=12;g=45;b=64}
       const p=i*4;img.data[p]=r;img.data[p+1]=g;img.data[p+2]=b;img.data[p+3]=255;
     }
