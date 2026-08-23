@@ -1,4 +1,4 @@
-import {H,W,type HeightField} from "./core";
+import {H,W,type HeightField} from "./core.ts";
 
 export type LandmassAnalysis = {
   components: number;
