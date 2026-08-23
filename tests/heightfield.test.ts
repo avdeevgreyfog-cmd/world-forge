@@ -1,0 +1,57 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {H,W,generate,type HeightSettings} from "../lib/heightfield/core.ts";
+import {analyzeLandmasses} from "../lib/heightfield/analysis.ts";
+
+const baseline:HeightSettings={frequency:4,octaves:6,persistence:.52,redistribution:1.05,sea:.5};
+
+function checksum(values:Float32Array){
+  let hash=2166136261>>>0;
+  const bytes=new Uint8Array(values.buffer,values.byteOffset,values.byteLength);
+  for(const byte of bytes)hash=Math.imul(hash^byte,16777619)>>>0;
+  return hash>>>0;
+}
+
+test("v0.7 reference output remains unchanged",()=>{
+  const field=generate(481726,baseline);
+  assert.equal(checksum(field.values),1471391727);
+  assert.equal(field.land,31);
+  assert.ok(Math.abs(field.min-0.2056825608210136)<1e-12);
+  assert.ok(Math.abs(field.max-0.7265650219086217)<1e-12);
+  assert.ok(Math.abs(field.mean-0.46266782064842815)<1e-12);
+});
+
+test("generation is deterministic",()=>{
+  const a=generate(481726,baseline);
+  const b=generate(481726,baseline);
+  assert.equal(checksum(a.values),checksum(b.values));
+});
+
+test("different seeds produce different fields",()=>{
+  assert.notEqual(checksum(generate(481726,baseline).values),checksum(generate(481727,baseline).values));
+});
+
+test("height values remain normalized",()=>{
+  const field=generate(481726,baseline);
+  for(const value of field.values)assert.ok(value>=0&&value<=1);
+});
+
+test("horizontal seam remains continuous",()=>{
+  const field=generate(481726,baseline);
+  let maxDifference=0;
+  for(let y=0;y<H;y++)maxDifference=Math.max(maxDifference,Math.abs(field.values[y*W]-field.values[y*W+W-1]));
+  assert.ok(maxDifference<1e-7,`max seam difference: ${maxDifference}`);
+});
+
+test("landmass analysis is deterministic and bounded",()=>{
+  const field=generate(481726,baseline);
+  const analysis=analyzeLandmasses(field,baseline.sea);
+  assert.ok(analysis.components>=analysis.majorLandmasses);
+  assert.ok(analysis.majorLandmasses>=1);
+  assert.ok(analysis.largestShare>=analysis.secondShare);
+  assert.ok(analysis.largestShare>=0&&analysis.largestShare<=1);
+  assert.ok(analysis.secondShare>=0&&analysis.secondShare<=1);
+  assert.ok(analysis.smallIslandsShare>=0&&analysis.smallIslandsShare<=1);
+  assert.deepEqual(analysis,analyzeLandmasses(field,baseline.sea));
+});
