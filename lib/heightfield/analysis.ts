@@ -10,11 +10,13 @@ export type LandmassAnalysis = {
 };
 
 export function analyzeLandmasses(
-  field: Pick<HeightField,"values">,
+  field: Pick<HeightField,"values"> & Partial<Pick<HeightField,"width"|"height">>,
   sea: number,
   majorShareThreshold = 0.02,
 ): LandmassAnalysis {
-  const visited = new Uint8Array(W * H);
+  const width = field.width ?? W;
+  const height = field.height ?? H;
+  const visited = new Uint8Array(width * height);
   const sizes: number[] = [];
   let totalLand = 0;
 
@@ -35,17 +37,17 @@ export function analyzeLandmasses(
 
   const stack: number[] = [];
   const pushIfLand = (x: number, y: number) => {
-    if (y < 0 || y >= H) return;
-    const wrappedX = ((x % W) + W) % W;
-    const index = y * W + wrappedX;
+    if (y < 0 || y >= height) return;
+    const wrappedX = ((x % width) + width) % width;
+    const index = y * width + wrappedX;
     if (visited[index] || field.values[index] < sea) return;
     visited[index] = 1;
     stack.push(index);
   };
 
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const start = y * W + x;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const start = y * width + x;
       if (visited[start] || field.values[start] < sea) continue;
 
       let size = 0;
@@ -55,8 +57,8 @@ export function analyzeLandmasses(
       while (stack.length) {
         const index = stack.pop()!;
         size++;
-        const cx = index % W;
-        const cy = Math.floor(index / W);
+        const cx = index % width;
+        const cy = Math.floor(index / width);
         pushIfLand(cx - 1, cy);
         pushIfLand(cx + 1, cy);
         pushIfLand(cx, cy - 1);
